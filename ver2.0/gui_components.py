@@ -12,6 +12,7 @@ from models import User, Item, CategoryManager, UserManager, ItemManager
 class RegisterWindow(tk.Toplevel):
     '''
     注册窗口
+    处理新用户的注册信息的输入和提交
     '''
     def __init__(self, parent, user_manager: UserManager):
         super().__init__(parent)
@@ -33,7 +34,7 @@ class RegisterWindow(tk.Toplevel):
             if "密码" in field:
                 entry_type = lambda master: tk.Entry(master, show="*")
             
-            # 缓存信息输入
+            # 创建输入框并保存引用，以便后续获取数据
             entry = entry_type(frame)
             entry.grid(row=i, column=1, sticky="ew", pady=2)
             self.entries[field] = entry
@@ -46,8 +47,10 @@ class RegisterWindow(tk.Toplevel):
         '''
         执行注册行为
         '''
-        vals = {key: entry.get().strip() for key, entry in self.entries.items()}    # 获取缓存中的输入
+        # 收集所有输入框的数据
+        vals = {key: entry.get().strip() for key, entry in self.entries.items()}
         
+        # 基础验证
         if not all(vals.values()):
             messagebox.showerror("错误", "所有字段都不能为空！", parent=self)
             return
@@ -56,7 +59,7 @@ class RegisterWindow(tk.Toplevel):
             return
 
         try:
-            # 转化为df进行数据库写入
+            # 调用管理器进行注册，数据持久化
             self.user_manager.register_user(
                 username=vals["用户名"],
                 password=vals["密码"],
@@ -174,6 +177,7 @@ class LoginView(ttk.Frame):
 class CategoryManagementWindow(tk.Toplevel):
     '''
     类别管理窗口
+    管理员用于添加、修改和删除物品类别及其属性模板
     '''
     def __init__(self, parent, category_manager: CategoryManager):
         super().__init__(parent)
@@ -228,6 +232,7 @@ class CategoryManagementWindow(tk.Toplevel):
         cat_name = self.category_listbox.get(selection_indices[0])
         attributes = self.category_manager.get_attributes_for_category(cat_name)
 
+        # 填充右侧表单
         self.name_entry.delete(0, tk.END)
         self.name_entry.insert(0, cat_name)
         
@@ -251,7 +256,7 @@ class CategoryManagementWindow(tk.Toplevel):
             messagebox.showerror("错误", "类别名称不能为空！", parent=self)
             return
         
-        # 按照换行进行类别项目构建
+        # 解析属性文本框，每一行作为一个属性字段
         attributes = [line.strip() for line in self.attr_text.get("1.0", tk.END).strip().split("\n") if line.strip()]
         
         # 检查是更新现有类别还是新建类别
@@ -285,6 +290,7 @@ class CategoryManagementWindow(tk.Toplevel):
 class UserManagementWindow(tk.Toplevel):
     '''
     用户管理窗口
+    管理员用于查看用户列表和审批新注册用户
     '''
     def __init__(self, parent, user_manager: UserManager):
         super().__init__(parent)
@@ -338,7 +344,7 @@ class UserManagementWindow(tk.Toplevel):
             username = values[0]
             status = values[2]
             
-            # 只处理 'pending' 状态的用户
+            # 仅对状态为 'pending' (待审核) 的用户执行批准操作
             if status == 'pending':
                 if self.user_manager.approve_user(username):
                     approved_count += 1
@@ -358,6 +364,7 @@ class UserManagementWindow(tk.Toplevel):
 class MyWantsWindow(tk.Toplevel):
     '''
     显示当前用户“想要”的物品列表
+    展示用户表达过购买意向的物品及其状态
     '''
     def __init__(self, parent, items: List[Item]):
         super().__init__(parent)
@@ -389,6 +396,7 @@ class MyWantsWindow(tk.Toplevel):
 class ReceivedWantsWindow(tk.Toplevel):
     '''
     显示谁想要我的物品
+    卖家查看自己发布的物品收到的购买意向和出价
     '''
     def __init__(self, parent, wants_data: List[Dict]):
         super().__init__(parent)
@@ -422,6 +430,7 @@ class ReceivedWantsWindow(tk.Toplevel):
 class BuyerSelectionWindow(tk.Toplevel):
     '''
     确认售出时选择买家的窗口
+    当有多个买家想要同一物品时，卖家需要指定最终买家
     '''
     def __init__(self, parent, wanters: List[User], callback):
         super().__init__(parent)
@@ -453,6 +462,7 @@ class BuyerSelectionWindow(tk.Toplevel):
 class ItemDetailWindow(tk.Toplevel):
     '''
     物品详情窗口 (只读 + 留言板)
+    展示物品的详细信息、图片以及留言互动区域
     '''
     def __init__(self, parent, item: Item, item_manager: ItemManager, current_user: User):
         super().__init__(parent)
@@ -462,6 +472,7 @@ class ItemDetailWindow(tk.Toplevel):
         self.title(f"物品详情 - {item.name}")
         self.geometry("400x500")
         
+        # 创建可滚动的画布，以适应内容较多的情况
         canvas = tk.Canvas(self)
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas, padding=20)
@@ -484,7 +495,7 @@ class ItemDetailWindow(tk.Toplevel):
             ttk.Label(row_frame, text=f"{label}:", font=("", 10, "bold"), width=15, anchor="w").pack(side="left")
             ttk.Label(row_frame, text=str(value), wraplength=250).pack(side="left", fill="x", expand=True)
 
-        # 基本信息
+        # --- 基本信息部分 ---
         ttk.Label(scrollable_frame, text="基本信息", font=("", 12, "bold")).pack(anchor="w", pady=(0, 10))
         
         # --- 图片展示 ---
@@ -509,14 +520,14 @@ class ItemDetailWindow(tk.Toplevel):
         add_row("交易地点", item.address)
         add_row("物品说明", item.description)
 
-        # 联系人信息
+        # --- 联系人信息 ---
         ttk.Separator(scrollable_frame, orient="horizontal").pack(fill="x", pady=15)
         ttk.Label(scrollable_frame, text="卖家信息", font=("", 12, "bold")).pack(anchor="w", pady=(0, 10))
         add_row("发布者", item.owner_username)
         add_row("联系电话", item.phone)
         add_row("电子邮箱", item.email)
 
-        # 特定属性
+        # --- 动态特定属性 ---
         if item.specific_attributes:
             ttk.Separator(scrollable_frame, orient="horizontal").pack(fill="x", pady=15)
             ttk.Label(scrollable_frame, text="详细属性", font=("", 12, "bold")).pack(anchor="w", pady=(0, 10))
@@ -551,6 +562,9 @@ class ItemDetailWindow(tk.Toplevel):
         self.refresh_messages()
 
     def refresh_messages(self):
+        '''
+        刷新留言板内容
+        '''
         for widget in self.messages_frame.winfo_children():
             widget.destroy()
             
@@ -569,7 +583,7 @@ class ItemDetailWindow(tk.Toplevel):
                 indent = 20
                 prefix = "[回复] "
             
-            # 头部: 发送者 + 时间
+            # 渲染单条留言: 发送者 + 时间 + 内容
             header_text = f"{prefix}{msg.sender_name} ({msg.created_at}):"
             ttk.Label(frame, text=header_text, font=("", 9, "bold")).pack(anchor="w", padx=(indent, 0))
             
@@ -604,6 +618,7 @@ class ItemDetailWindow(tk.Toplevel):
 class ItemInfoWindow(tk.Toplevel):
     '''
     添加或修改物品的窗口
+    根据选择的类别动态生成属性输入框，支持图片上传
     '''
     def __init__(self, parent, item_manager: ItemManager, category_manager: CategoryManager, current_user: User, item_to_edit: Optional[Item] = None):
         super().__init__(parent)
@@ -620,7 +635,7 @@ class ItemInfoWindow(tk.Toplevel):
         main_frame = ttk.Frame(self, padding=10)
         main_frame.pack(fill="both", expand=True)
         
-        # 公有信息区
+        # --- 公有信息区 (所有物品都有的字段) ---
         common_frame = ttk.LabelFrame(main_frame, text="公共信息", padding=10)
         common_frame.pack(fill="x", pady=5)
         
@@ -652,14 +667,14 @@ class ItemInfoWindow(tk.Toplevel):
         self.img_label = ttk.Label(img_frame, text="未选择", foreground="gray")
         self.img_label.pack(side="left", padx=5)
         
-        # 特定属性区
+        # --- 特定属性区 (根据类别动态生成) ---
         self.specific_frame = ttk.LabelFrame(main_frame, text="特定属性", padding=10)
         self.specific_frame.pack(fill="x", pady=5)
 
         # 保存按钮
         ttk.Button(main_frame, text="保存", command=self.save_item).pack(pady=10)
 
-        # 如果是修改就改
+        # 如果是编辑模式，回填现有数据
         if self.item_to_edit:
             self.load_item_data()
 
@@ -671,14 +686,14 @@ class ItemInfoWindow(tk.Toplevel):
 
     def on_category_change(self, event=None):
         '''
-        更新显示的类别
+        当类别改变时，重新生成特定属性的输入框
         '''
         # 清空旧的特定属性
         for widget in self.specific_frame.winfo_children():
             widget.destroy()
         self.specific_entries.clear()
 
-        # 显示新的类别
+        # 获取新类别的属性模板并生成输入框
         category = self.category_combo.get()
         attributes = self.category_manager.get_attributes_for_category(category)
         
@@ -691,7 +706,7 @@ class ItemInfoWindow(tk.Toplevel):
 
     def load_item_data(self):
         '''
-        装载物品数据
+        编辑模式下：将物品现有数据填充到表单中
         '''
         item = self.item_to_edit
         self.common_entries["物品名称"].insert(0, item.name)
@@ -718,7 +733,7 @@ class ItemInfoWindow(tk.Toplevel):
 
     def save_item(self):
         '''
-        保存当前物品
+        验证输入并保存物品（新建或更新）
         '''
         common_vals = {key: entry.get().strip() for key, entry in self.common_entries.items()}
         specific_vals = {key: entry.get().strip() for key, entry in self.specific_entries.items()}
@@ -736,6 +751,7 @@ class ItemInfoWindow(tk.Toplevel):
         
         can_bargain = 1 if self.bargain_combo.get() == "是" else 0
         
+        # --- 图片处理逻辑 ---
         image_paths = []
         if self.selected_image_path:
             # 检查是否是已有的图片（编辑模式下未修改图片）
@@ -757,7 +773,7 @@ class ItemInfoWindow(tk.Toplevel):
                     messagebox.showerror("错误", f"保存图片失败: {e}", parent=self)
                     return
         
-        # 如果是修改，准备需要更新的字段
+        # --- 数据库操作 ---
         if self.item_to_edit: 
             update_data = {
                 "name": common_vals["物品名称"],
@@ -797,6 +813,7 @@ class ItemInfoWindow(tk.Toplevel):
 class MainView(ttk.Frame):
     '''
     主应用视图
+    包含顶部操作栏、搜索栏和物品列表展示
     '''
     def __init__(self, parent, app_controller, current_user: User):
         super().__init__(parent)
@@ -810,7 +827,7 @@ class MainView(ttk.Frame):
 
         self.grid(row=0, column=0, sticky="nsew")
 
-        # 顶部操作区
+        # --- 顶部操作区 (根据角色显示不同按钮) ---
         top_frame = ttk.Frame(self, padding=10)
         top_frame.pack(fill="x")
         
@@ -828,7 +845,7 @@ class MainView(ttk.Frame):
             
         ttk.Button(top_frame, text="查看详情", command=self.open_item_details_window).pack(side="right")
         
-        # 搜索区
+        # --- 搜索区 ---
         search_frame = ttk.LabelFrame(self, text="搜索物品", padding=10)
         search_frame.pack(fill="x", padx=10, pady=5)
         
@@ -843,7 +860,7 @@ class MainView(ttk.Frame):
         ttk.Button(search_frame, text="搜索", command=self.search_items).pack(side="left")
         ttk.Button(search_frame, text="显示全部", command=self.refresh_item_list).pack(side="left", padx=5)
 
-        # 物品列表区
+        # --- 物品列表区 (Treeview) ---
         list_frame = ttk.Frame(self, padding=10)
         list_frame.pack(fill="both", expand=True)
 
@@ -860,7 +877,7 @@ class MainView(ttk.Frame):
         self.tree.column('id', width=40)
         self.tree.pack(fill="both", expand=True)
         
-        # 配置列表颜色标记
+        # 配置列表行的颜色标记
         self.tree.tag_configure('sold', foreground='gray')      # 已售出: 灰色
         self.tree.tag_configure('wanted', foreground='red')     # 有人想要: 红色
         self.tree.tag_configure('active', foreground='green')   # 在售: 绿色
@@ -869,14 +886,14 @@ class MainView(ttk.Frame):
 
     def refresh_item_list(self, items: Optional[List[Item]] = None):
         '''
-        更新显示的物品列表
+        从数据库获取最新数据并刷新列表显示，应用状态颜色
         '''
 
         # 先清除
         for i in self.tree.get_children():
             self.tree.delete(i)
         
-        # 读取所有的物品并写入
+        # 如果没有传入特定的 items (如搜索结果)，则获取所有物品
         item_source = items if items is not None else self.item_manager.get_all_items()
         for item in reversed(item_source):
             # 状态翻译
@@ -901,7 +918,7 @@ class MainView(ttk.Frame):
     
     def search_items(self):
         '''
-        查找物品，必须选择一个类别
+        执行搜索逻辑：必须选择类别，关键字匹配名称或描述
         '''
         category = self.search_category_combo.get()
         keyword = self.search_entry.get().strip()
@@ -921,6 +938,9 @@ class MainView(ttk.Frame):
         ItemInfoWindow(self, self.item_manager, self.category_manager, self.current_user)
 
     def open_edit_item_window(self):
+        '''
+        打开编辑窗口，包含权限检查
+        '''
         # 需要先选中要修改的物品
         selected_items = self.tree.selection()
         if not selected_items:
@@ -955,7 +975,9 @@ class MainView(ttk.Frame):
             ItemDetailWindow(self, item, self.item_manager, self.current_user)
 
     def buy_item(self):
-        '''普通用户购买物品'''
+        '''
+        普通用户发起购买意向，支持砍价逻辑
+        '''
         selected_items = self.tree.selection()
         if not selected_items:
             messagebox.showwarning("提示", "请先选择一个物品。")
@@ -992,7 +1014,9 @@ class MainView(ttk.Frame):
                 messagebox.showinfo("提示", "您已经添加过意向了。")
 
     def confirm_sold(self):
-        '''卖家确认售出'''
+        '''
+        卖家确认售出，需从意向列表中选择最终买家
+        '''
         selected_items = self.tree.selection()
         if not selected_items:
             messagebox.showwarning("提示", "请先选择一个物品。")
@@ -1036,7 +1060,7 @@ class MainView(ttk.Frame):
 
     def delete_selected_item(self):
         '''
-        删除选中的物品
+        删除选中的物品，包含权限和状态检查
         '''
         selected_items = self.tree.selection()
         if not selected_items:

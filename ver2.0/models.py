@@ -9,6 +9,10 @@ from database import get_db_connection, init_db
 init_db()
 
 class User:
+    '''
+    用户实体类
+    封装用户基本信息及联系方式
+    '''
     def __init__(self, id, username, role, status, contact_info):
         self.id = id
         self.username = username
@@ -18,17 +22,24 @@ class User:
 
     @property
     def address(self):
+        '''快捷属性：从 contact_info 字典中安全获取地址，若不存在返回空字符串'''
         return self.contact_info.get('address', '')
 
     @property
     def phone(self):
+        '''快捷属性：从 contact_info 字典中安全获取电话'''
         return self.contact_info.get('phone', '')
 
     @property
     def email(self):
+        '''快捷属性：从 contact_info 字典中安全获取邮箱'''
         return self.contact_info.get('email', '')
 
 class Item:
+    '''
+    物品实体类
+    包含物品的所有属性，以及为了方便UI显示而关联查询出的额外字段（如卖家名、类别名）
+    '''
     def __init__(self, id, name, description, category_id, owner_id, status, price, can_bargain, address, specific_attributes, image_paths,
                  category_name=None, owner_username=None, phone=None, email=None, buyer_id=None, want_count=0):
         self.id = id
@@ -56,6 +67,9 @@ class Item:
         return self.id
 
 class Message:
+    '''
+    留言实体类
+    '''
     def __init__(self, id, item_id, sender_id, sender_name, content, reply_to_id, created_at):
         self.id = id
         self.item_id = item_id
@@ -66,13 +80,22 @@ class Message:
         self.created_at = created_at
 
 class Category:
+    '''
+    类别实体类
+    包含类别名称和该类别特有的属性模板
+    '''
     def __init__(self, id, name, attributes_template):
         self.id = id
         self.name = name
         self.attributes_template = attributes_template
 
 class UserManager:
+    '''
+    用户管理器
+    负责用户的认证、注册、审批及管理员管理
+    '''
     def authenticate(self, username, password) -> Optional[User]:
+        '''验证用户登录，检查密码哈希'''
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
@@ -98,6 +121,7 @@ class UserManager:
         return None
 
     def register(self, username, password, contact_info: Dict) -> Tuple[bool, str]:
+        '''注册新用户，密码加密存储，状态默认为 pending'''
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
@@ -142,6 +166,7 @@ class UserManager:
         return [User(r['id'], r['username'], r['role'], r['status'], json.loads(r['contact_info'])) for r in rows]
 
     def approve_user(self, username):
+        '''管理员批准用户注册'''
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE users SET status = 'approved' WHERE username = ?", (username,))
@@ -178,6 +203,10 @@ class UserManager:
             conn.close()
 
 class CategoryManager:
+    '''
+    类别管理器
+    负责物品类别的增删改查，以及属性模板的管理
+    '''
     def get_all(self) -> List[Category]:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -204,6 +233,7 @@ class CategoryManager:
             conn.close()
 
     def get_attributes_for_category(self, name: str) -> List[str]:
+        '''获取指定类别的特定属性列表（用于动态生成表单）'''
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT attributes_template FROM categories WHERE name = ?", (name,))
@@ -231,8 +261,16 @@ class CategoryManager:
         conn.close()
 
 class ItemManager:
+    '''
+    物品管理器
+    负责物品的发布、搜索、交易流程及留言管理
+    '''
     def _fetch_items(self, where_clause="", params=()) -> List[Item]:
-        '''内部辅助函数：执行带有 JOIN 的查询并返回 Item 对象列表'''
+        '''
+        核心查询方法
+        执行带有 JOIN 的 SQL 查询，将 items 表与 users, categories 表关联，
+        并转换 JSON 字段为 Python 对象
+        '''
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -275,7 +313,7 @@ class ItemManager:
         return items
 
     def create_item(self, name, description, price, can_bargain, address, phone, email, category, owner_username, specific_attributes, image_paths=None):
-        '''GUI 兼容性: 创建物品，处理名称到 ID 的转换'''
+        '''创建新物品，处理外键关联和 JSON 数据序列化'''
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -311,7 +349,7 @@ class ItemManager:
         return self._fetch_items()
 
     def search_items(self, category_name, keyword) -> List[Item]:
-        '''GUI 兼容性: 搜索物品'''
+        '''根据类别和关键字搜索物品'''
         # 先获取 category_id
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -384,7 +422,7 @@ class ItemManager:
         conn.close()
 
     def add_want(self, item_id, user_id, offer_price=0.0) -> bool:
-        '''添加购买意向'''
+        '''记录用户对物品的购买意向'''
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
@@ -477,7 +515,7 @@ class ItemManager:
         return results
 
     def confirm_sold(self, item_id, buyer_id):
-        '''确认售出：将状态改为已售出，并记录最终买家'''
+        '''确认交易完成：将状态改为已售出，并记录最终买家'''
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE items SET status = 'sold', buyer_id = ? WHERE id = ?", (buyer_id, item_id))
